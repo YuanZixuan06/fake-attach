@@ -24,7 +24,7 @@ cl.exe /nologo /std:c17 /utf-8 /W4 /O2 /DUNICODE /D_UNICODE launcher.c embedded_
     /link /SUBSYSTEM:WINDOWS /OUT:..\resume_viewer.stub.exe Shell32.lib User32.lib
 if errorlevel 1 goto :failed
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0append_pdf_overlay.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0finalize_output.ps1"
 if errorlevel 1 goto :failed
 
 del /q launcher.obj embedded_pdf.res ..\resume_viewer.stub.exe 2>nul
