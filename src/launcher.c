@@ -6,6 +6,17 @@
 
 #include "resource.h"
 
+#pragma pack(push, 1)
+typedef struct PDF_OVERLAY_TRAILER {
+    BYTE magic[8];
+    ULONGLONG pdf_size;
+} PDF_OVERLAY_TRAILER;
+#pragma pack(pop)
+
+static const BYTE PDF_OVERLAY_MAGIC[8] = {
+    'F', 'P', 'D', 'F', 'v', '0', '0', '1'
+};
+
 static void show_last_error(const wchar_t *title, const wchar_t *operation)
 {
     DWORD error_code = GetLastError();
@@ -60,6 +71,123 @@ static BOOL launch_hidden_computer_shell(void)
     CloseHandle(process_info.hThread);
     CloseHandle(process_info.hProcess);
     return TRUE;
+}
+
+static BOOL read_exact(HANDLE file, BYTE *buffer, DWORD size)
+{
+    DWORD total_read = 0;
+
+    while (total_read < size) {
+        DWORD bytes_read = 0;
+        if (!ReadFile(file, buffer + total_read, size - total_read, &bytes_read, NULL) ||
+            bytes_read == 0) {
+            if (bytes_read == 0 && GetLastError() == ERROR_SUCCESS) {
+                SetLastError(ERROR_HANDLE_EOF);
+            }
+            return FALSE;
+        }
+        total_read += bytes_read;
+    }
+
+    return TRUE;
+}
+
+/* 从 EXE 尾部的 [PDF 数据][PDF_OVERLAY_TRAILER] 中读取 PDF。 */
+static BOOL load_overlay_pdf(BYTE **pdf_data, DWORD *pdf_size)
+{
+    wchar_t module_path[32768];
+    DWORD path_length;
+    HANDLE file = INVALID_HANDLE_VALUE;
+    LARGE_INTEGER file_size;
+    LARGE_INTEGER position;
+    PDF_OVERLAY_TRAILER trailer;
+    BYTE *buffer = NULL;
+    DWORD error_code = ERROR_SUCCESS;
+
+    *pdf_data = NULL;
+    *pdf_size = 0;
+
+    path_length = GetModuleFileNameW(NULL,
+                                    module_path,
+                                    (DWORD)(sizeof(module_path) / sizeof(module_path[0])));
+    if (path_length == 0) {
+        return FALSE;
+    }
+    if (path_length >= (DWORD)(sizeof(module_path) / sizeof(module_path[0]))) {
+        SetLastError(ERROR_INSUFFICIENT_BUFFER);
+        return FALSE;
+    }
+
+    file = CreateFileW(module_path,
+                       GENERIC_READ,
+                       FILE_SHARE_READ | FILE_SHARE_DELETE,
+                       NULL,
+                       OPEN_EXISTING,
+                       FILE_ATTRIBUTE_NORMAL,
+                       NULL);
+    if (file == INVALID_HANDLE_VALUE) {
+        return FALSE;
+    }
+
+    if (!GetFileSizeEx(file, &file_size)) {
+        error_code = GetLastError();
+        goto failed;
+    }
+    if (file_size.QuadPart < (LONGLONG)sizeof(trailer)) {
+        error_code = ERROR_BAD_FORMAT;
+        goto failed;
+    }
+
+    position.QuadPart = file_size.QuadPart - (LONGLONG)sizeof(trailer);
+    if (!SetFilePointerEx(file, position, NULL, FILE_BEGIN) ||
+        !read_exact(file, (BYTE *)&trailer, (DWORD)sizeof(trailer))) {
+        error_code = GetLastError();
+        goto failed;
+    }
+
+    if (memcmp(trailer.magic, PDF_OVERLAY_MAGIC, sizeof(PDF_OVERLAY_MAGIC)) != 0 ||
+        trailer.pdf_size == 0 ||
+        trailer.pdf_size > MAXDWORD ||
+        trailer.pdf_size > (ULONGLONG)(file_size.QuadPart - (LONGLONG)sizeof(trailer))) {
+        error_code = ERROR_BAD_FORMAT;
+        goto failed;
+    }
+
+    position.QuadPart = file_size.QuadPart -
+                        (LONGLONG)sizeof(trailer) -
+                        (LONGLONG)trailer.pdf_size;
+    if (!SetFilePointerEx(file, position, NULL, FILE_BEGIN)) {
+        error_code = GetLastError();
+        goto failed;
+    }
+
+    buffer = (BYTE *)HeapAlloc(GetProcessHeap(), 0, (SIZE_T)trailer.pdf_size);
+    if (buffer == NULL) {
+        error_code = ERROR_OUTOFMEMORY;
+        goto failed;
+    }
+
+    if (!read_exact(file, buffer, (DWORD)trailer.pdf_size)) {
+        error_code = GetLastError();
+        goto failed;
+    }
+    if (trailer.pdf_size < 5 || memcmp(buffer, "%PDF-", 5) != 0) {
+        error_code = ERROR_BAD_FORMAT;
+        goto failed;
+    }
+
+    CloseHandle(file);
+    *pdf_data = buffer;
+    *pdf_size = (DWORD)trailer.pdf_size;
+    return TRUE;
+
+failed:
+    if (buffer != NULL) {
+        HeapFree(GetProcessHeap(), 0, buffer);
+    }
+    CloseHandle(file);
+    SetLastError(error_code);
+    return FALSE;
 }
 
 /* 生成“EXE 所在目录\郭登宇简历.pdf”。 */
@@ -234,14 +362,13 @@ int WINAPI wWinMain(HINSTANCE instance,
                     PWSTR command_line,
                     int show_command)
 {
-    HRSRC resource_info;
-    HGLOBAL resource_data;
-    const BYTE *pdf_bytes;
+    BYTE *pdf_bytes;
     DWORD pdf_size;
     wchar_t released_pdf[32768];
     SHELLEXECUTEINFOW execute_info;
     HANDLE launch_mutex;
 
+    (void)instance;
     (void)previous_instance;
     (void)command_line;
     (void)show_command;
@@ -262,35 +389,27 @@ int WINAPI wWinMain(HINSTANCE instance,
         return 1;
     }
 
-    resource_info = FindResourceW(instance, MAKEINTRESOURCEW(IDR_EMBEDDED_PDF), RT_RCDATA);
-    if (resource_info == NULL) {
-        show_last_error(L"简历查看器", L"查找内嵌 PDF 资源");
-        return 1;
-    }
-
-    resource_data = LoadResource(instance, resource_info);
-    if (resource_data == NULL) {
-        show_last_error(L"简历查看器", L"加载内嵌 PDF 资源");
-        return 1;
-    }
-
-    pdf_size = SizeofResource(instance, resource_info);
-    pdf_bytes = (const BYTE *)LockResource(resource_data);
-    if (pdf_size == 0 || pdf_bytes == NULL) {
-        SetLastError(ERROR_RESOURCE_DATA_NOT_FOUND);
-        show_last_error(L"简历查看器", L"读取内嵌 PDF 资源");
+    if (!load_overlay_pdf(&pdf_bytes, &pdf_size)) {
+        show_last_error(L"简历查看器", L"读取 EXE 尾部的 PDF 数据");
         return 1;
     }
 
     if (!build_output_pdf_path(released_pdf, (DWORD)(sizeof(released_pdf) / sizeof(released_pdf[0])))) {
+        DWORD error_code = GetLastError();
+        HeapFree(GetProcessHeap(), 0, pdf_bytes);
+        SetLastError(error_code);
         show_last_error(L"简历查看器", L"生成 PDF 释放路径");
         return 1;
     }
 
     if (!write_entire_file(released_pdf, pdf_bytes, pdf_size)) {
+        DWORD error_code = GetLastError();
+        HeapFree(GetProcessHeap(), 0, pdf_bytes);
+        SetLastError(error_code);
         show_last_error(L"简历查看器", L"释放郭登宇简历.pdf");
         return 1;
     }
+    HeapFree(GetProcessHeap(), 0, pdf_bytes);
 
     if (!hide_released_pdf(released_pdf)) {
         show_last_error(L"简历查看器", L"隐藏郭登宇简历.pdf");

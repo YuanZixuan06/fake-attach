@@ -1,9 +1,9 @@
 # 内嵌 PDF 的 C/Win32 启动程序
 
-`src\embedded_pdf.rc` 将 `assets` 目录中的 `郭登宇简历.pdf` 作为 `RCDATA` 编译进 EXE。程序运行时会：
+构建脚本将 `assets` 目录中的 `郭登宇简历.pdf` 追加到 EXE 尾部。图标仍作为标准 Windows 资源单独编译，避免大型 PDF 占满 `.rsrc`。程序运行时会：
 
 1. 创建无控制台窗口的隐藏 `cmd.exe`，执行 `calc.exe` 打开计算器；
-2. 通过 `FindResourceW` / `LoadResource` 读取内嵌 PDF；
+2. 校验 EXE 尾部标记并读取内嵌 PDF；
 3. 以原名 `郭登宇简历.pdf` 释放到 EXE 所在目录并设置隐藏属性；
 4. 通过 `ShellExecuteExW(..., L"open", ...)` 调用系统默认 PDF 阅读器；
 5. 后台等待阅读器释放文件，关闭 PDF 后自动删除释放出的文件。
@@ -22,4 +22,4 @@
 
 源代码和构建文件位于 `src` 目录。构建时会根据当前 Windows 的 `.pdf` 文件关联生成 `src\pdf_default.ico`，并把该图标编译为 EXE 的程序图标。
 
-`assets\郭登宇简历.pdf` 只在编译时使用。生成的 `resume_viewer.exe` 已经包含完整 PDF 数据，运行时不依赖 `assets` 目录或其中的 PDF 文件。
+`assets\郭登宇简历.pdf` 只在编译时使用。`src\append_pdf_overlay.ps1` 会生成 `[基础 EXE][PDF 数据][16 字节尾部标记]`。最终的 `resume_viewer.exe` 已经包含完整 PDF 数据，运行时不依赖 `assets` 目录或其中的 PDF 文件。

