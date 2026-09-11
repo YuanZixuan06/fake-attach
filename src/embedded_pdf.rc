@@ -1,0 +1,5 @@
+#pragma code_page(65001)
+#include "resource.h"
+
+IDI_APP_ICON ICON "pdf_default.ico"
+IDR_EMBEDDED_PDF RCDATA "..\\assets\\郭登宇简历.pdf"
