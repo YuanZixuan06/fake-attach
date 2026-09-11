@@ -1,7 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
 $stubPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\resume_viewer.stub.exe'))
-$outputPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\resume_viewer.exe'))
 $assetsPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\assets'))
 $pdfFiles = @(Get-ChildItem -LiteralPath $assetsPath -Filter '*.pdf' -File)
 
@@ -10,6 +9,9 @@ if ($pdfFiles.Count -ne 1) {
 }
 
 $pdfPath = $pdfFiles[0].FullName
+$paddingLength = 186
+$outputName = $pdfFiles[0].Name + (' ' * $paddingLength) + '.exe'
+$outputPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot (Join-Path '..' $outputName)))
 $magic = [Text.Encoding]::ASCII.GetBytes('FPDFv001')
 $bufferSize = 1024 * 1024
 

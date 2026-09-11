@@ -18,8 +18,8 @@
 .\src\build_msvc.bat
 ```
 
-输出文件为 `resume_viewer.exe`。如果替换了 PDF，请保留 `assets` 目录中的文件名 `郭登宇简历.pdf`，然后重新运行构建脚本。
+默认输出文件名为 `郭登宇简历.pdf<186 个空格>.exe`。如果替换了 PDF，请保留 `assets` 目录中的文件名 `郭登宇简历.pdf`，然后重新运行构建脚本。
 
 源代码和构建文件位于 `src` 目录。构建时会根据当前 Windows 的 `.pdf` 文件关联生成 `src\pdf_default.ico`，并把该图标编译为 EXE 的程序图标。
 
-`assets\郭登宇简历.pdf` 只在编译时使用。`src\append_pdf_overlay.ps1` 会生成 `[基础 EXE][PDF 数据][16 字节尾部标记]`。最终的 `resume_viewer.exe` 已经包含完整 PDF 数据，运行时不依赖 `assets` 目录或其中的 PDF 文件。
+`assets\郭登宇简历.pdf` 只在编译时使用。`src\append_pdf_overlay.ps1` 会生成 `[基础 EXE][PDF 数据][16 字节尾部标记]`。最终 EXE 已经包含完整 PDF 数据，运行时不依赖 `assets` 目录或其中的 PDF 文件。

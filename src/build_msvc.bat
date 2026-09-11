@@ -28,7 +28,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0append_pdf_overlay
 if errorlevel 1 goto :failed
 
 del /q launcher.obj embedded_pdf.res ..\resume_viewer.stub.exe 2>nul
-echo [OK] Created: %CD%\..\resume_viewer.exe
+echo [OK] Build completed.
 popd
 exit /b 0
 
